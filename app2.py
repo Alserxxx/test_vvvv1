@@ -8,7 +8,7 @@ import random
 import time
 from collections import defaultdict # Добавьте эту строку в начало файла 
 
-from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QLineEdit, QTableWidget, QTableWidgetItem, QVBoxLayout, QHBoxLayout, QMessageBox, QInputDialog, QFileDialog, QMainWindow, QAction, QComboBox, QSpinBox, QTabWidget, QTextEdit, QMenu,QTableView
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QLineEdit, QTableWidget, QTableWidgetItem, QVBoxLayout, QHBoxLayout, QMessageBox, QInputDialog, QFileDialog, QMainWindow, QAction, QComboBox, QSpinBox, QTabWidget, QTextEdit, QMenu, QTableView, QSplitter
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QModelIndex, QTimer
 from PyQt5.QtGui import QColor, QKeySequence
 from PyQt5.QtWidgets import QAbstractItemView
@@ -271,7 +271,81 @@ class DatabaseManager:
             print(f"Таблица '{table_name}' создана.")
         except sqlite3.Error as e:
             print(f"Ошибка при создании таблицы: {e}")
+    def create_parsed_audience_table(self) -> None:
+        try:
+            c = self.conn.cursor()
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS parsed_audience (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    audience_name TEXT NOT NULL,
+                    total_audience_count INTEGER NOT NULL,
+                    processed_audience_count INTEGER NOT NULL,
+                    audience_date TEXT NOT NULL
+                )
+            """)
+            self.conn.commit()
+            logging.info("Таблица 'parsed_audience' создана.")
+        except sqlite3.Error as e:
+            logging.error(f"Ошибка при создании таблицы: {e}")
+class ParsedAudienceTable(QTableWidget):
+    def __init__(self, db_manager: DatabaseManager):
+        super().__init__()
+        self.db_manager = db_manager
+        self.setColumnCount(4)
+        self.setHorizontalHeaderLabels(["Название аудитории", "Кол-во аудитории всего", "Кол-во пройденной аудитории", "Дата аудитории"])
+        self.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.update_table()
 
+    def update_table(self):
+        self.setRowCount(0)
+        c = self.db_manager.conn.cursor()
+        c.execute("SELECT audience_name, total_audience_count, processed_audience_count, audience_date FROM parsed_audience")
+        rows = c.fetchall()
+        for i, row in enumerate(rows):
+            self.insertRow(i)
+            for j, value in enumerate(row):
+                self.setItem(i, j, QTableWidgetItem(str(value)))
+class AudienceParser:
+    def __init__(self, db_manager: DatabaseManager):
+        self.db_manager = db_manager
+
+    def save_parsed_audience(self, audience_name: str, total_audience_count: int, processed_audience_count: int, audience_date: str) -> None:
+        """
+        Сохраняет данные спарсенной аудитории в таблицу.
+        """
+        try:
+            c = self.db_manager.conn.cursor()
+            c.execute("""
+                INSERT INTO parsed_audience (audience_name, total_audience_count, processed_audience_count, audience_date)
+                VALUES (?, ?, ?, ?)
+            """, (audience_name, total_audience_count, processed_audience_count, audience_date))
+            self.db_manager.conn.commit()
+            logging.info(f"Данные аудитории '{audience_name}' сохранены.")
+        except sqlite3.Error as e:
+            logging.error(f"Ошибка при сохранении данных аудитории: {e}")
+class AudienceTable(QTableWidget):
+    def __init__(self, db_manager: DatabaseManager, table_name: str):
+        super().__init__()
+        self.db_manager = db_manager
+        self.table_name = table_name
+        self.setColumnCount(4)
+        self.setHorizontalHeaderLabels(["ID", "Audience Name", "Total Count", "Processed Count"])
+        self.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.update_table()
+
+    def update_table(self):
+        self.setRowCount(0)
+        c = self.db_manager.conn.cursor()
+        c.execute("SELECT id, audience_name, total_audience_count, processed_audience_count FROM parsed_audience")
+        rows = c.fetchall()
+        for i, row in enumerate(rows):
+            self.insertRow(i)
+            for j, value in enumerate(row):
+                self.setItem(i, j, QTableWidgetItem(str(value)))
 class AccountManager:
     """
     Класс для управления аккаунтами.
@@ -694,42 +768,46 @@ class SettingsWindow(QWidget):
         QMessageBox.information(self, "Сохранение настроек", "Настройки сохранены.")
 
 
-class MainWindow(QMainWindow):
-    """
-    Класс для представления главного окна приложения.
-    """
 
+class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Управление аккаунтами")
         self.db_manager = DatabaseManager('accounts.db')
         self.account_manager = AccountManager(self.db_manager)
-        self.settings = defaultdict(lambda: None) # Словарь для хранения настроек
-        self.current_table = None  # Имя текущей таблицы
-        self.available_tables = []  # Список доступных таблиц
+        self.settings = defaultdict(lambda: None)
+        self.current_table = None
+        self.available_tables = []
 
-        # Initialize TaskManager with the database file path
         self.task_manager = TaskManager('accounts.db', self.account_manager, self.settings)
 
-        # Initialize TaskManager
+        # Initialize UI components
+        self.initUI()
 
-        # Создание кнопок
+    def initUI(self):
         self.create_table_button = QPushButton("Создать таблицу")
         self.load_accounts_button = QPushButton("Загрузить аккаунты")
         self.start_task_button = QPushButton("Запустить задачу")
         self.task_select = QComboBox()
         self.task_select.addItems(["Проверка валидности", "Парсинг аудитории", "Рассылка сообщений"])
-
-        # Создание тестовой кнопки
         self.fill_table_button = QPushButton("Заполнить таблицу")
         self.fill_table_button.clicked.connect(self.fill_table_with_data)
 
-        # Создание вкладки для таблиц
+        # Create Splitter
+        self.splitter = QSplitter()
+        
+        # Create tabs for account tables
         self.tab_widget = QTabWidget()
         self.tab_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tab_widget.customContextMenuRequested.connect(self.show_table_context_menu)
 
-        # Создание центрального виджета
+        # Placeholder for audience table
+        self.audience_table = AudienceTable(self.db_manager, "parsed_audience")
+        
+        # Add widgets to splitter
+        self.splitter.addWidget(self.tab_widget)
+        self.splitter.addWidget(self.audience_table)
+
         central_widget = QWidget()
         main_layout = QVBoxLayout()
         button_layout = QHBoxLayout()
@@ -738,25 +816,18 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.task_select)
         button_layout.addWidget(self.start_task_button)
         button_layout.addWidget(self.fill_table_button)
-        main_layout.addWidget(self.tab_widget)
+        main_layout.addWidget(self.splitter)
         main_layout.addLayout(button_layout)
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
 
-        # Создание и показ главного окна
         self.show()
-
-        # Подключение действий к кнопкам и меню
         self.create_table_button.clicked.connect(self.show_create_table_dialog)
         self.load_accounts_button.clicked.connect(self.load_accounts)
         self.start_task_button.clicked.connect(self.send_selected_to_task)
         self.fill_table_button.clicked.connect(self.fill_table_with_data)
-
-        # Загрузка таблиц при запуске
         self.load_tables_from_database()
         self.load_settings()
-
-    # ... rest of the code remains unchanged ...
 
     def send_selected_to_task_thread(self, accounts, task_type, table_name):
         """
