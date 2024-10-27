@@ -14,7 +14,7 @@ from PyQt5.QtGui import QColor, QKeySequence
 from PyQt5.QtWidgets import QAbstractItemView
 
 # Настройка логирования
-logging.basicConfig(filename='app.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+#logging.basicConfig(filename='app.log', level=print, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class DatabaseManager:
@@ -45,18 +45,18 @@ class DatabaseManager:
             c = self.conn.cursor()
             c.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
             self.conn.commit()
-            logging.info(f"Колонка '{column_name}' добавлена в таблицу '{table_name}'.")
+            print(f"Колонка '{column_name}' добавлена в таблицу '{table_name}'.")
         except sqlite3.Error as e:
-            logging.error(f"Ошибка при добавлении колонки '{column_name}': {e}")
+            print(f"Ошибка при добавлении колонки '{column_name}': {e}")
     def connect(self) -> None:
         """
         Создает подключение к базе данных SQLite.
         """
         try:
             self.conn = sqlite3.connect(self.db_file)
-            logging.info(f"Соединение с базой данных '{self.db_file}' установлено.")
+            print(f"Соединение с базой данных '{self.db_file}' установлено.")
         except sqlite3.Error as e:
-            logging.error(f"Ошибка при подключении к базе данных: {e}")
+            print(f"Ошибка при подключении к базе данных: {e}")
 
     def create_table(self, table_name: str) -> None:
         """
@@ -83,9 +83,9 @@ class DatabaseManager:
                 )
             """)
             self.conn.commit()
-            logging.info(f"Таблица '{table_name}' создана.")
+            print(f"Таблица '{table_name}' создана.")
         except sqlite3.Error as e:
-            logging.error(f"Ошибка при создании таблицы: {e}")
+            print(f"Ошибка при создании таблицы: {e}")
 
     def add_account(self, table_name: str, account: dict) -> None:
         """
@@ -102,9 +102,9 @@ class DatabaseManager:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (account['username'], account['password'], account.get('ua', ''), account.get('cookie', ''), account.get('device', ''), 'Не проверено', 0, 0, 0, ''))
             self.conn.commit()
-            logging.info(f"Аккаунт '{account['username']}' добавлен в таблицу '{table_name}'.")
+            print(f"Аккаунт '{account['username']}' добавлен в таблицу '{table_name}'.")
         except sqlite3.Error as e:
-            logging.error(f"Ошибка при добавлении аккаунта: {e}")
+            print(f"Ошибка при добавлении аккаунта: {e}")
 
     def get_accounts(self, table_name: str) -> list:
         """
@@ -121,10 +121,10 @@ class DatabaseManager:
             c.execute(f"SELECT * FROM '{table_name}'")
             rows = c.fetchall()
             accounts = [dict(zip([column[0] for column in c.description], row)) for row in rows]
-            logging.info(f"Список аккаунтов из таблицы '{table_name}' получен.")
+            print(f"Список аккаунтов из таблицы '{table_name}' получен.")
             return accounts
         except sqlite3.Error as e:
-            logging.error(f"Ошибка при получении списка аккаунтов: {e}")
+            print(f"Ошибка при получении списка аккаунтов: {e}")
             return []
 
     def update_account_status(self, table_name: str, account: dict):
@@ -132,7 +132,7 @@ class DatabaseManager:
             c = self.conn.cursor()
             # Проверка занятости аккаунта
             if account['status_account'] == 'В процессе':
-                logging.info(f"Аккаунт '{account['username']}' уже выполняет задачу.")
+                print(f"Аккаунт '{account['username']}' уже выполняет задачу.")
                 return
             
             status = 'Валидный' if random.randint(1, 2) == 1 else 'Невалидный'
@@ -140,9 +140,9 @@ class DatabaseManager:
             
             c.execute(f"UPDATE '{table_name}' SET status_account = ?, color = ? WHERE id = ?", (status, color, account['id']))
             self.conn.commit()
-            logging.info(f"Статус аккаунта '{account['username']}' обновлен в таблице '{table_name}'.")
+            print(f"Статус аккаунта '{account['username']}' обновлен в таблице '{table_name}'.")
         except sqlite3.Error as e:
-            logging.error(f"Ошибка при обновлении статуса аккаунта: {e}")
+            print(f"Ошибка при обновлении статуса аккаунта: {e}")
 
     def delete_table(self, table_name: str) -> None:
         """
@@ -155,9 +155,9 @@ class DatabaseManager:
             c = self.conn.cursor()
             c.execute(f"DROP TABLE '{table_name}'")
             self.conn.commit()
-            logging.info(f"Таблица '{table_name}' удалена.")
+            print(f"Таблица '{table_name}' удалена.")
         except sqlite3.Error as e:
-            logging.error(f"Ошибка при удалении таблицы: {e}")
+            print(f"Ошибка при удалении таблицы: {e}")
 
     def check_account_status(self, account: dict) -> str:
         """
@@ -187,9 +187,9 @@ class DatabaseManager:
                 VALUES (?)
             """, (audience_id,))
             self.conn.commit()
-            logging.info(f"ID аудитории '{audience_id}' добавлен в таблицу '{table_name}'.")
+            print(f"ID аудитории '{audience_id}' добавлен в таблицу '{table_name}'.")
         except sqlite3.Error as e:
-            logging.error(f"Ошибка при добавлении ID аудитории: {e}")
+            print(f"Ошибка при добавлении ID аудитории: {e}")
 
     def get_audience_ids(self, table_name: str) -> list:
         """
@@ -206,10 +206,10 @@ class DatabaseManager:
             c.execute(f"SELECT id FROM '{table_name}'")
             rows = c.fetchall()
             audience_ids = [row[0] for row in rows]
-            logging.info(f"Список ID аудитории из таблицы '{table_name}' получен.")
+            print(f"Список ID аудитории из таблицы '{table_name}' получен.")
             return audience_ids
         except sqlite3.Error as e:
-            logging.error(f"Ошибка при получении списка ID аудитории: {e}")
+            print(f"Ошибка при получении списка ID аудитории: {e}")
             return []
 
     def mark_audience_id_as_used(self, table_name: str, audience_id: int) -> None:
@@ -228,9 +228,9 @@ class DatabaseManager:
                 WHERE id = ?
             """, (audience_id,))
             self.conn.commit()
-            logging.info(f"ID аудитории '{audience_id}' помечен как использованный в таблице '{table_name}'.")
+            print(f"ID аудитории '{audience_id}' помечен как использованный в таблице '{table_name}'.")
         except sqlite3.Error as e:
-            logging.error(f"Ошибка при пометке ID аудитории как использованный: {e}")
+            print(f"Ошибка при пометке ID аудитории как использованный: {e}")
 
     def get_unused_audience_ids(self, table_name: str) -> list:
         """
@@ -247,12 +247,30 @@ class DatabaseManager:
             c.execute(f"SELECT id FROM '{table_name}' WHERE used = 0")
             rows = c.fetchall()
             audience_ids = [row[0] for row in rows]
-            logging.info(f"Список неиспользованных ID аудитории из таблицы '{table_name}' получен.")
+            print(f"Список неиспользованных ID аудитории из таблицы '{table_name}' получен.")
             return audience_ids
         except sqlite3.Error as e:
-            logging.error(f"Ошибка при получении списка неиспользованных ID аудитории: {e}")
+            print(f"Ошибка при получении списка неиспользованных ID аудитории: {e}")
             return []
+    def create_audience_table(self, table_name: str) -> None:
+        """
+        Создает таблицу аудитории в базе данных.
 
+        Args:
+            table_name (str): Имя таблицы.
+        """
+        try:
+            c = self.conn.cursor()
+            c.execute(f"""
+                CREATE TABLE IF NOT EXISTS {table_name} (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    used INTEGER DEFAULT 0
+                )
+            """)
+            self.conn.commit()
+            print(f"Таблица '{table_name}' создана.")
+        except sqlite3.Error as e:
+            print(f"Ошибка при создании таблицы: {e}")
 
 class AccountManager:
     """
@@ -318,9 +336,9 @@ class AccountManager:
                 WHERE id = ?
             """, (messages_run, messages_run, account_id))
             self.db_manager.conn.commit()
-            logging.info(f"Счетчик сообщений для аккаунта '{account_id}' обновлен.")
+            print(f"Счетчик сообщений для аккаунта '{account_id}' обновлен.")
         except sqlite3.Error as e:
-            logging.error(f"Ошибка при обновлении счетчика сообщений: {e}")
+            print(f"Ошибка при обновлении счетчика сообщений: {e}")
 
 
 class TaskManager:
@@ -482,27 +500,25 @@ class AccountTable(QTableWidget,QTableView):
             # Удаление из базы данных
             for row_id in selected_row_ids:
                 try:
+                    # Получаем id из базы данных для соответствующей строки
                     c = self.db_manager.conn.cursor()
-                    c.execute(f"DELETE FROM '{self.table_name}' WHERE id = ?", (row_id + 1,))
-                    self.db_manager.conn.commit()
-                    logging.info(f"Строка {row_id + 1} удалена из таблицы '{self.table_name}'.")
+                    c.execute(f"SELECT id FROM '{self.table_name}' LIMIT 1 OFFSET ?", (row_id,))
+                    db_row_id = c.fetchone()
+                    if db_row_id:
+                        c.execute(f"DELETE FROM '{self.table_name}' WHERE id = ?", (db_row_id[0],))
+                        self.db_manager.conn.commit()
+                        print(f"Строка с id {db_row_id[0]} удалена из таблицы '{self.table_name}'.")
                 except sqlite3.Error as e:
-                    logging.error(f"Ошибка при удалении строки: {e}")
+                    print(f"Ошибка при удалении строки: {e}")
+
             # Удаление из таблицы
             for row_id in sorted(selected_row_ids, reverse=True):
                 self.removeRow(row_id)
 
-            # Обновляем UI
-            self.update_table(self.table_name)
-
-            logging.info(f"Строки {selected_row_ids} удалены.")
-
-        else:
-            logging.info("Удаление строк отменено.")
-
     def handle_item_clicked(self, item: QTableWidgetItem):
-        print('ss')
         row = self.row(item)
+        print(row)
+
         self.selectRow(row)
 
 
@@ -610,7 +626,7 @@ class TaskWindow(QWidget):
             else:
                 QMessageBox.warning(self, "Ошибка", "Введите имя файла.")
         else:
-            logging.info("Сохранение аудитории отменено.")
+            print("Сохранение аудитории отменено.")
 
     def save_audience_to_file(self, audience: list, filename: str):
         """
@@ -624,9 +640,9 @@ class TaskWindow(QWidget):
             with open(filename, 'w', encoding='utf-8') as f:
                 for id in audience:
                     f.write(str(id) + '\n')
-            logging.info(f"Аудитория сохранена в файл '{filename}'.")
+            print(f"Аудитория сохранена в файл '{filename}'.")
         except Exception as e:
-            logging.error(f"Ошибка при сохранении аудитории в файл: {e}")
+            print(f"Ошибка при сохранении аудитории в файл: {e}")
 
 
 class SettingsWindow(QWidget):
@@ -766,17 +782,17 @@ class MainWindow(QMainWindow):
                     QMessageBox.warning(self, "Ошибка", "Имя таблицы должно состоять из букв и цифр.")
                     return
                 self.db_manager.create_table(table_name)
-                self.db_manager.create_audience_table(f"{table_name}_audience")
+                self.db_manager.create_audience_table(f"{table_name}")
                 self.available_tables.append(table_name)  # Добавляем таблицу в список
                 self.current_table = table_name  # Обновляем текущую таблицу
                 self.account_table = AccountTable(self.db_manager, table_name)  # Создаем новую таблицу
                 self.tab_widget.addTab(self.account_table, table_name)  # Добавляем вкладку с новой таблицей
                 self.tab_widget.setCurrentWidget(self.account_table)  # Переключаемся на новую вкладку
-                logging.info(f"Таблица '{table_name}' создана.")
+                print(f"Таблица '{table_name}' создана.")
             else:
                 QMessageBox.warning(self, "Ошибка", "Введите имя таблицы.")
         else:
-            logging.info("Создание таблицы отменено.")
+            print("Создание таблицы отменено.")
 
     def load_accounts(self):
         """
@@ -793,12 +809,12 @@ class MainWindow(QMainWindow):
                             # Обновляем таблицу в UI
                             self.tab_widget.currentWidget().update_table(self.current_table)
                 except Exception as e:
-                    logging.error(f"Ошибка при загрузке аккаунтов: {e}")
+                    print(f"Ошибка при загрузке аккаунтов: {e}")
                     QMessageBox.warning(self, "Ошибка", f"Ошибка при загрузке аккаунтов: {e}")
             else:
-                logging.info("Загрузка аккаунтов отменена.")
+                print("Загрузка аккаунтов отменена.")
         else:
-            logging.info("Загрузка аккаунтов отменена.")
+            print("Загрузка аккаунтов отменена.")
 
     def send_selected_to_task(self):
         """
@@ -874,7 +890,7 @@ class MainWindow(QMainWindow):
                     # Заполняем таблицу данными из БД
                     self.account_table.update_table(table_name)
         except Exception as e:
-            logging.error(f"Ошибка при загрузке таблиц из базы данных: {e}")
+            print(f"Ошибка при загрузке таблиц из базы данных: {e}")
 
     def show_table_context_menu(self, point):
         """
@@ -903,9 +919,9 @@ class MainWindow(QMainWindow):
             self.tab_widget.removeTab(current_index)
             self.available_tables.remove(table_name)
             self.current_table = None  # Обновляем текущую таблицу, если она была удалена
-            logging.info(f"Таблица '{table_name}' удалена.")
+            print(f"Таблица '{table_name}' удалена.")
         else:
-            logging.info(f"Удаление таблицы '{table_name}' отменено.")
+            print(f"Удаление таблицы '{table_name}' отменено.")
 
     def load_settings(self):
         """
@@ -916,9 +932,9 @@ class MainWindow(QMainWindow):
                 for line in f:
                     key, value = line.strip().split("=", 1)
                     self.settings[key] = value
-            logging.info("Настройки загружены.")
+            print("Настройки загружены.")
         except FileNotFoundError:
-            logging.info("Файл настроек не найден. Используются стандартные настройки.")
+            print("Файл настроек не найден. Используются стандартные настройки.")
 
     def save_settings(self):
         """
@@ -928,34 +944,15 @@ class MainWindow(QMainWindow):
             with open('settings.txt', 'w') as f:
                 for key, value in self.settings.items():
                     f.write(f"{key}={value}\n")
-            logging.info("Настройки сохранены.")
+            print("Настройки сохранены.")
         except Exception as e:
-            logging.error(f"Ошибка при сохранении настроек: {e}")
+            print(f"Ошибка при сохранении настроек: {e}")
 
 if __name__ == "__main__":
     app = QApplication([])
     main_window = MainWindow()
 
-    # Создаем таблицу 'accounts' 
-    main_window.db_manager.create_table('accounts')
-    main_window.available_tables.append('accounts')
-    main_window.current_table = 'accounts'
-    main_window.account_table = AccountTable(main_window.db_manager, 'accounts')
-    main_window.tab_widget.addTab(main_window.account_table, 'accounts')
-    main_window.tab_widget.setCurrentWidget(main_window.account_table)
 
-    # Добавляем аккаунты в таблицу 
-    for _ in range(5):
-        main_window.account_manager.add_account('accounts', {
-            'username': f'user_{random.randint(1, 1000)}',
-            'password': f'pass_{random.randint(1, 1000)}',
-            'ua': f'UA_{random.randint(1, 1000)}',
-            'cookie': f'cookie_{random.randint(1, 1000)}',
-            'device': f'device_{random.randint(1, 1000)}'
-        })
-    
-    # Обновляем таблицу
-    main_window.account_table.update_table('accounts')
 
     # Запускаем приложение 
     app.exec_()
