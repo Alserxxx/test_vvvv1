@@ -32,7 +32,22 @@ class DatabaseManager:
         self.conn = None
         self.db_file = db_file
         self.connect()
+    def add_column(self, table_name: str, column_name: str, column_type: str) -> None:
+        """
+        Добавляет новую колонку в таблицу.
 
+        Args:
+            table_name (str): Имя таблицы.
+            column_name (str): Имя новой колонки.
+            column_type (str): Тип данных новой колонки.
+        """
+        try:
+            c = self.conn.cursor()
+            c.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+            self.conn.commit()
+            logging.info(f"Колонка '{column_name}' добавлена в таблицу '{table_name}'.")
+        except sqlite3.Error as e:
+            logging.error(f"Ошибка при добавлении колонки '{column_name}': {e}")
     def connect(self) -> None:
         """
         Создает подключение к базе данных SQLite.
@@ -113,22 +128,17 @@ class DatabaseManager:
             return []
 
     def update_account_status(self, table_name: str, account: dict):
-        """
-        Обновляет статус аккаунта в базе данных.
-
-        Args:
-            table_name (str): Имя таблицы.
-            account (dict): Словарь с данными аккаунта.
-        """
         try:
             c = self.conn.cursor()
-            status = self.check_account_status(account)
-            color = 'green' if status == "Валидный" else 'red'
-            c.execute(f"""
-                UPDATE '{table_name}'
-                SET status_account = ?, color = ?
-                WHERE id = ?
-            """, (status, color, account['id']))
+            # Проверка занятости аккаунта
+            if account['status_account'] == 'В процессе':
+                logging.info(f"Аккаунт '{account['username']}' уже выполняет задачу.")
+                return
+            
+            status = 'Валидный' if random.randint(1, 2) == 1 else 'Невалидный'
+            color = 'lightgreen' if status == 'Валидный' else 'lightcoral'
+            
+            c.execute(f"UPDATE '{table_name}' SET status_account = ?, color = ? WHERE id = ?", (status, color, account['id']))
             self.conn.commit()
             logging.info(f"Статус аккаунта '{account['username']}' обновлен в таблице '{table_name}'.")
         except sqlite3.Error as e:
@@ -318,16 +328,16 @@ class TaskManager:
     Класс для управления задачами.
     """
 
-    def __init__(self, db_manager: DatabaseManager, account_manager: AccountManager, settings: dict):
+    def __init__(self, db_file: str, account_manager: AccountManager, settings: dict):
         """
         Инициализирует менеджера задач.
 
         Args:
-            db_manager (DatabaseManager): Менеджер базы данных.
+            db_file (str): Путь к файлу базы данных.
             account_manager (AccountManager): Менеджер аккаунтов.
             settings (dict): Словарь настроек.
         """
-        self.db_manager = db_manager
+        self.db_file = db_file
         self.account_manager = account_manager
         self.settings = settings
 
@@ -340,35 +350,38 @@ class TaskManager:
             task_type (str): Тип задачи.
             table_name (str): Имя таблицы.
         """
+        # Create a new DatabaseManager instance for this thread
+        db_manager = DatabaseManager(self.db_file)
+        account_manager = AccountManager(db_manager)
+
         if task_type == "Проверка валидности":
             for account in accounts:
-                self.account_manager.update_account_status(table_name, account)
+                account_manager.update_account_status(table_name, account)
         elif task_type == "Парсинг аудитории":
-            self.parse_audience(table_name, accounts)
+            self.parse_audience(db_manager, table_name, accounts)
         elif task_type == "Рассылка сообщений":
-            self.send_messages(table_name, accounts)
+            self.send_messages(db_manager, account_manager, table_name, accounts)
 
-    def parse_audience(self, table_name: str, accounts: list):
+    def parse_audience(self, db_manager: DatabaseManager, table_name: str, accounts: list):
         """
         Фейковый парсинг аудитории.
         """
         for _ in range(len(accounts)):
             audience_id = random.randint(10000, 100000)
-            self.db_manager.add_audience_id(table_name, audience_id)
+            db_manager.add_audience_id(table_name, audience_id)
             time.sleep(0.01)  # Эмуляция задержки
 
-    def send_messages(self, table_name: str, accounts: list):
+    def send_messages(self, db_manager: DatabaseManager, account_manager: AccountManager, table_name: str, accounts: list):
         """
         Фейковая рассылка сообщений.
         """
         for account in accounts:
-            unused_audience_ids = self.db_manager.get_unused_audience_ids(table_name)
+            unused_audience_ids = db_manager.get_unused_audience_ids(table_name)
             if unused_audience_ids:
                 audience_id = random.choice(unused_audience_ids)
-                self.db_manager.mark_audience_id_as_used(table_name, audience_id)
-                self.account_manager.update_account_messages(table_name, account['id'], 1)
+                db_manager.mark_audience_id_as_used(table_name, audience_id)
+                account_manager.update_account_messages(table_name, account['id'], 1)
                 time.sleep(0.01)  # Эмуляция задержки
-
 
 
 class AccountTable(QTableWidget,QTableView):
@@ -391,9 +404,6 @@ class AccountTable(QTableWidget,QTableView):
         self.itemClicked.connect(self.handle_item_clicked)
 
     def update_table(self, table_name: str):
-        """
-        Обновляет таблицу данными из базы данных.
-        """
         self.setRowCount(0)
         accounts = self.db_manager.get_accounts(table_name)
         for i, account in enumerate(accounts):
@@ -407,13 +417,12 @@ class AccountTable(QTableWidget,QTableView):
             self.setItem(i, 6, QTableWidgetItem(str(account['messages_total'])))
             self.setItem(i, 7, QTableWidgetItem(str(account['messages_day'])))
             self.setItem(i, 8, QTableWidgetItem(str(account['messages_run'])))
-            self.setItem(i, 9, QTableWidgetItem(""))  # Пустая ячейка для красивого вида
+            self.setItem(i, 9, QTableWidgetItem(""))
 
             # Установка цвета строки
             color = account['color']
             if color:
-                self.item(i, 0).setBackground(QColor(color))
-                for j in range(1, 10):
+                for j in range(10):
                     self.item(i, j).setBackground(QColor(color))
 
     def select_rows_with_shift(self, key):
@@ -683,6 +692,11 @@ class MainWindow(QMainWindow):
         self.current_table = None  # Имя текущей таблицы
         self.available_tables = []  # Список доступных таблиц
 
+        # Initialize TaskManager with the database file path
+        self.task_manager = TaskManager('accounts.db', self.account_manager, self.settings)
+
+        # Initialize TaskManager
+
         # Создание кнопок
         self.create_table_button = QPushButton("Создать таблицу")
         self.load_accounts_button = QPushButton("Загрузить аккаунты")
@@ -725,6 +739,21 @@ class MainWindow(QMainWindow):
         # Загрузка таблиц при запуске
         self.load_tables_from_database()
         self.load_settings()
+
+    # ... rest of the code remains unchanged ...
+
+    def send_selected_to_task_thread(self, accounts, task_type, table_name):
+        """
+        Отправляет выделенные аккаунты в задачу в отдельном потоке.
+        """
+        thread = threading.Thread(target=self.run_task, args=(accounts, task_type, table_name))
+        thread.start()
+
+    def run_task(self, accounts, task_type, table_name):
+        """
+        Обработка задачи (в отдельном потоке).
+        """
+        self.task_manager.run_task(accounts, task_type, table_name)
 
     def show_create_table_dialog(self):
         """
@@ -789,18 +818,7 @@ class MainWindow(QMainWindow):
             selected_accounts = [accounts[row_id] for row_id in selected_row_ids]
             self.send_selected_to_task_thread(selected_accounts, selected_task, self.tab_widget.currentWidget().table_name)
 
-    def send_selected_to_task_thread(self, accounts, task_type, table_name):
-        """
-        Отправляет выделенные аккаунты в задачу в отдельном потоке.
-        """
-        thread = threading.Thread(target=self.run_task, args=(accounts, task_type, table_name))
-        thread.start()
 
-    def run_task(self, accounts, task_type, table_name):
-        """
-        Обработка задачи (в отдельном потоке).
-        """
-        self.task_manager.run_task(accounts, task_type, table_name)
 
     def show_settings(self):
         """
