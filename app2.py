@@ -21,11 +21,20 @@ from PyQt5.QtWidgets import (
 import threading
 # Настройка логирования
 #logging.basicConfig(filename='app.log', level=print, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+
+
 class DatabaseManager:
     def __init__(self, db_file: str):
         self.db_file = db_file
+        self.conn = None
 
-
+    def connect(self):
+        try:
+            self.conn = sqlite3.connect(self.db_file)
+        except sqlite3.Error as e:
+            print(f"Database connection error: {e}")
 
     def create_audience_table(self, conn, audience_name: str):
         try:
@@ -41,9 +50,9 @@ class DatabaseManager:
                 )
             """)
             conn.commit()
-            logging.info(f"Table '{table_name}' created.")
+            print(f"Table '{table_name}' created.")
         except sqlite3.Error as e:
-            logging.error(f"Error creating table: {e}")
+            print(f"Error creating table: {e}")
 
 
 
@@ -63,15 +72,7 @@ class DatabaseManager:
             print(f"Колонка '{column_name}' добавлена в таблицу '{table_name}'.")
         except sqlite3.Error as e:
             print(f"Ошибка при добавлении колонки '{column_name}': {e}")
-    def connect(self) -> None:
-        """
-        Создает подключение к базе данных SQLite.
-        """
-        try:
-            self.conn = sqlite3.connect(self.db_file)
-            print(f"Соединение с базой данных '{self.db_file}' установлено.")
-        except sqlite3.Error as e:
-            print(f"Ошибка при подключении к базе данных: {e}")
+
 
     def create_table(self, table_name: str) -> None:
         """
@@ -187,25 +188,9 @@ class DatabaseManager:
         status = "Валидный" if random.randint(1, 2) == 1 else "Невалидный"
         return status
 
-    def add_audience_id(self, table_name: str, audience_id: int) -> None:
-        """
-        Добавляет ID аудитории в таблицу.
-
-        Args:
-            table_name (str): Имя таблицы.
-            audience_id (int): ID аудитории.
-        """
-        try:
-            c = self.conn.cursor()
-            c.execute(f"""
-                INSERT INTO '{table_name}' (id)
-                VALUES (?)
-            """, (audience_id,))
-            self.conn.commit()
-            print(f"ID аудитории '{audience_id}' добавлен в таблицу '{table_name}'.")
-        except sqlite3.Error as e:
-            print(f"Ошибка при добавлении ID аудитории: {e}")
-
+    def add_audience_id(self, table_name, audience_id):
+        self.cursor.execute(f"INSERT INTO parsed_audience (audience_id) VALUES (?)", (audience_id,))
+        self.connection.commit()
     def get_audience_ids(self, table_name: str) -> list:
         """
         Получает список всех ID аудитории из таблицы.
@@ -227,47 +212,13 @@ class DatabaseManager:
             print(f"Ошибка при получении списка ID аудитории: {e}")
             return []
 
-    def mark_audience_id_as_used(self, table_name: str, audience_id: int) -> None:
-        """
-        Помечает ID аудитории как использованный.
+    def get_unused_audience_ids(self, table_name):
+        self.cursor.execute(f"SELECT audience_id FROM parsed_audience WHERE used = 0")
+        return [row[0] for row in self.cursor.fetchall()]
 
-        Args:
-            table_name (str): Имя таблицы.
-            audience_id (int): ID аудитории.
-        """
-        try:
-            c = self.conn.cursor()
-            c.execute(f"""
-                UPDATE '{table_name}'
-                SET used = 1
-                WHERE id = ?
-            """, (audience_id,))
-            self.conn.commit()
-            print(f"ID аудитории '{audience_id}' помечен как использованный в таблице '{table_name}'.")
-        except sqlite3.Error as e:
-            print(f"Ошибка при пометке ID аудитории как использованный: {e}")
-
-    def get_unused_audience_ids(self, table_name: str) -> list:
-        """
-        Получает список всех неиспользованных ID аудитории из таблицы.
-
-        Args:
-            table_name (str): Имя таблицы.
-
-        Returns:
-            list: Список неиспользованных ID аудитории.
-        """
-        try:
-            c = self.conn.cursor()
-            c.execute(f"SELECT id FROM '{table_name}' WHERE used = 0")
-            rows = c.fetchall()
-            audience_ids = [row[0] for row in rows]
-            print(f"Список неиспользованных ID аудитории из таблицы '{table_name}' получен.")
-            return audience_ids
-        except sqlite3.Error as e:
-            print(f"Ошибка при получении списка неиспользованных ID аудитории: {e}")
-            return []
-
+    def mark_audience_id_as_used(self, table_name, audience_id):
+        self.cursor.execute(f"UPDATE parsed_audience SET used = 1 WHERE audience_id = ?", (audience_id,))
+        self.connection.commit()
     def create_parsed_audience_table(self) -> None:
         try:
             c = self.conn.cursor()
@@ -281,9 +232,9 @@ class DatabaseManager:
                 )
             """)
             self.conn.commit()
-            logging.info("Таблица 'parsed_audience' создана.")
+            print("Таблица 'parsed_audience' создана.")
         except sqlite3.Error as e:
-            logging.error(f"Ошибка при создании таблицы: {e}")
+            print(f"Ошибка при создании таблицы: {e}")
 
 
 class AudienceParser:
@@ -299,9 +250,9 @@ class AudienceParser:
                 VALUES (?, ?, ?, ?)
             """, (audience_name, total_audience_count, processed_audience_count, audience_date))
             conn.commit()
-            logging.info(f"Audience data '{audience_name}' saved.")
+            print(f"Audience data '{audience_name}' saved.")
         except sqlite3.Error as e:
-            logging.error(f"Error saving audience data: {e}")
+            print(f"Error saving audience data: {e}")
 
 class ParsedAudienceTable(QTableWidget):
     def __init__(self, db_manager: DatabaseManager):
@@ -433,35 +384,13 @@ class AccountManager:
         except sqlite3.Error as e:
             print(f"Ошибка при обновлении счетчика сообщений: {e}")
 
-
 class TaskManager:
-    """
-    Класс для управления задачами.
-    """
-
-    def __init__(self, db_file: str, account_manager: AccountManager, settings: dict):
-        """
-        Инициализирует менеджера задач.
-
-        Args:
-            db_file (str): Путь к файлу базы данных.
-            account_manager (AccountManager): Менеджер аккаунтов.
-            settings (dict): Словарь настроек.
-        """
+    def __init__(self, db_file, account_manager, settings):
         self.db_file = db_file
         self.account_manager = account_manager
         self.settings = settings
 
     def run_task(self, accounts: list, task_type: str, table_name: str):
-        """
-        Обработка задачи (в отдельном процессе).
-
-        Args:
-            accounts (list): Список словарей с данными аккаунтов.
-            task_type (str): Тип задачи.
-            table_name (str): Имя таблицы.
-        """
-        # Create a new DatabaseManager instance for this thread
         db_manager = DatabaseManager(self.db_file)
         account_manager = AccountManager(db_manager)
 
@@ -474,32 +403,23 @@ class TaskManager:
             self.send_messages(db_manager, account_manager, table_name, accounts)
 
     def parse_audience(self, db_manager: DatabaseManager, table_name: str, accounts: list):
-        """
-        Фейковый парсинг аудитории.
-        """
         for _ in range(len(accounts)):
             audience_id = random.randint(10000, 100000)
             db_manager.add_audience_id(table_name, audience_id)
-            time.sleep(0.01)  # Эмуляция задержки
+            time.sleep(0.01)
 
     def send_messages(self, db_manager: DatabaseManager, account_manager: AccountManager, table_name: str, accounts: list):
-        """
-        Фейковая рассылка сообщений.
-        """
         for account in accounts:
             unused_audience_ids = db_manager.get_unused_audience_ids(table_name)
             if unused_audience_ids:
                 audience_id = random.choice(unused_audience_ids)
                 db_manager.mark_audience_id_as_used(table_name, audience_id)
                 account_manager.update_account_messages(table_name, account['id'], 1)
-                time.sleep(0.01)  # Эмуляция задержки
+                time.sleep(0.01)
 
 
-class AccountTable(QTableWidget,QTableView):
-    """
-    Класс для представления таблицы аккаунтов.
-    """
 
+class AccountTable(QTableWidget, QTableView):
     def __init__(self, db_manager: DatabaseManager, table_name: str):
         super().__init__()
         self.db_manager = db_manager
@@ -507,11 +427,9 @@ class AccountTable(QTableWidget,QTableView):
         self.setColumnCount(10)
         self.setHorizontalHeaderLabels(["Имя пользователя", "Пароль", "UA", "Cookie", "Device", "Статус", "Сообщ. всего", "Сообщ. день", "Сообщ. запуск", " "])
         self.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.setSelectionMode(QAbstractItemView.ExtendedSelection)  # Разрешаем выделение нескольких строк
+        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.update_table(table_name)
-
-        # Установка обработчика для события клика
         self.itemClicked.connect(self.handle_item_clicked)
 
     def update_table(self, table_name: str):
