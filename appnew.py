@@ -37,23 +37,6 @@ class DatabaseManager:
             logging.error(f"Database connection error: {e}")
 
 
-    def create_audience_table(self, conn, audience_name: str):
-        try:
-            c = conn.cursor()
-            table_name = f"audience_{audience_name}"
-            c.execute(f"""
-                CREATE TABLE IF NOT EXISTS {table_name} (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    audience_name TEXT NOT NULL,
-                    total_audience_count INTEGER NOT NULL,
-                    processed_audience_count INTEGER NOT NULL,
-                    audience_date TEXT NOT NULL
-                )
-            """)
-            conn.commit()
-            print(f"Table '{table_name}' created.")
-        except sqlite3.Error as e:
-            print(f"Error creating table: {e}")
 
 
 
@@ -74,6 +57,24 @@ class DatabaseManager:
         except sqlite3.Error as e:
             print(f"Ошибка при добавлении колонки '{column_name}': {e}")
 
+    def create_audience_table(self, table_name: str) -> None:
+
+        try:
+            c = self.conn.cursor()
+            table_name = f"audience_{table_name}"
+            c.execute(f"""
+                CREATE TABLE IF NOT EXISTS {table_name} (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    audience_name TEXT NOT NULL,
+                    total_audience_count INTEGER NOT NULL,
+                    processed_audience_count INTEGER NOT NULL,
+                    audience_date TEXT NOT NULL
+                )
+            """)
+            self.conn.commit()
+            print(f"Table '{table_name}' created.")
+        except sqlite3.Error as e:
+            print(f"Error creating table: {e}")
 
     def create_table(self, table_name: str) -> None:
         """
@@ -285,7 +286,7 @@ class ParsedAudienceTable(QTableWidget):
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.update_table()
 
-    def update_table(self):
+    def update_table():
         self.setRowCount(0)
         conn = self.db_manager.connect()
         if conn:
@@ -311,7 +312,7 @@ class AudienceTable(QTableWidget):
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.update_table()
 
-    def update_table(self):
+    def update_table():
         self.setRowCount(0)
         c = self.db_manager.conn.cursor()
         table_name = f"{self.audience_name}"
@@ -344,7 +345,7 @@ class AccountManager:
                 self.db_manager.create_audience_table(audience_name)
                 # Immediately update the table to reflect the new group
                 parsed_audience_table = ParsedAudienceTable(self.db_manager)
-                parsed_audience_table.update_table()
+                parsed_audience_table.update_table(self)
             else:
                 QMessageBox.warning(None, "Ошибка", "Введите имя группы.")
 
@@ -390,28 +391,21 @@ class AccountManager:
         except sqlite3.Error as e:
             logging.error(f"Ошибка при обновлении статуса аккаунта: {e}")
 
-    def update_account_messages(self, table_name: str, account_id: int, messages_run: int):
-        """
-        Обновляет счетчик сообщений в базе данных.
-
-        Args:
-            table_name (str): Имя таблицы.
-            account_id (int): ID аккаунта.
-            messages_run (int): Количество сообщений для добавления.
-        """
-        try:
-            c = self.db_manager.conn.cursor()
-            c.execute(f"""
-                UPDATE '{table_name}'
-                SET messages_run = messages_run + ?,
-                    messages_total = messages_total + ?
-                WHERE id = ?
-            """, (messages_run, messages_run, account_id))
-            self.db_manager.conn.commit()
-            print(f"Счетчик сообщений для аккаунта '{account_id}' обновлен.")
-        except sqlite3.Error as e:
-            print(f"Ошибка при обновлении счетчика сообщений: {e}")
-
+def update_account_messages(self, table_name: str, account_id: int, messages_run: int):
+    try:
+        c = self.db_manager.conn.cursor()
+        c.execute(f"""
+            UPDATE '{table_name}'
+            SET messages_run = messages_run + ?,
+                messages_total = messages_total + ?
+            WHERE id = ?
+        """, (messages_run, messages_run, account_id))
+        self.db_manager.conn.commit()
+        print(f"Счетчик сообщений для аккаунта '{account_id}' обновлен.")
+    except sqlite3.Error as e:
+        print(f"Ошибка при обновлении счетчика сообщений: {e}")
+        
+        
 class TaskManager:
     def __init__(self, db_file, account_manager, settings):
         self.db_file = db_file
@@ -460,7 +454,7 @@ class AccountTable(QTableWidget, QTableView):
         self.itemClicked.connect(self.handle_item_clicked)
 
 
-    def update_table(self):
+    def update_table():
         self.db_manager.connect()
         self.setRowCount(0)
         accounts = self.db_manager.get_accounts(table_name)
@@ -706,18 +700,13 @@ class SettingsWindow(QWidget):
 
         QMessageBox.information(self, "Сохранение настроек", "Настройки сохранены.")
 
-
-
-
-
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Управление аккаунтами")
         self.db_manager = DatabaseManager('accounts.db')
-        self.db_manager.connect()
         self.account_manager = AccountManager(self.db_manager)
-        self.settings = {}
+        self.settings = defaultdict(lambda: None)
         self.current_table = None
         self.available_tables = []
 
@@ -732,6 +721,8 @@ class MainWindow(QMainWindow):
         self.start_task_button = QPushButton("Запустить задачу")
         self.task_select = QComboBox()
         self.task_select.addItems(["Проверка валидности", "Парсинг аудитории", "Рассылка сообщений"])
+        self.fill_table_button = QPushButton("Заполнить таблицу")
+        self.fill_table_button.clicked.connect(self.fill_table_with_data)
 
         # Create Splitter
         self.splitter = QSplitter()
@@ -742,12 +733,7 @@ class MainWindow(QMainWindow):
         self.tab_widget.customContextMenuRequested.connect(self.show_table_context_menu)
 
         # Placeholder for audience table
-        self.audience_table = QTableWidget()
-        self.audience_table.setColumnCount(4)
-        self.audience_table.setHorizontalHeaderLabels(["Название аудитории", "Кол-во аудитории всего", "Кол-во пройденной аудитории", "Дата аудитории"])
-        self.audience_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.audience_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.audience_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.audience_table = ParsedAudienceTable(self.db_manager)
 
         # Add widgets to splitter
         self.splitter.addWidget(self.tab_widget)
@@ -758,19 +744,21 @@ class MainWindow(QMainWindow):
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.create_table_button)
         button_layout.addWidget(self.load_accounts_button)
-        button_layout.addWidget(self.start_task_button)
         button_layout.addWidget(self.task_select)
+        button_layout.addWidget(self.start_task_button)
+        button_layout.addWidget(self.fill_table_button)
         main_layout.addWidget(self.splitter)
         main_layout.addLayout(button_layout)
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
 
+        self.show()
         self.create_table_button.clicked.connect(self.show_create_table_dialog)
         self.load_accounts_button.clicked.connect(self.load_accounts)
         self.start_task_button.clicked.connect(self.start_task_with_group_name)
-
+        self.fill_table_button.clicked.connect(self.fill_table_with_data)
         self.load_tables_from_database()
-        self.show()
+        self.load_settings()
 
     def start_task_with_group_name(self):
         audience_name, ok = QInputDialog.getText(self, "Название группы", "Введите название группы:")
@@ -781,6 +769,8 @@ class MainWindow(QMainWindow):
             task_type = self.task_select.currentText()
             task_window = TaskWindow(self, self.current_table, task_type, audience_name)
             task_window.show()
+        else:
+            QMessageBox.warning(self, "Ошибка", "Введите название группы.")
 
     def send_selected_to_task_thread(self, accounts, task_type, table_name):
         """
@@ -794,29 +784,51 @@ class MainWindow(QMainWindow):
         Обработка задачи (в отдельном потоке).
         """
         self.task_manager.run_task(accounts, task_type, table_name)
-    def show_create_table_dialog(self):
-        table_name, ok = QInputDialog.getText(self, "Создание таблицы", "Введите имя таблицы:")
-        if ok and table_name:
-            if not table_name.isalnum():
-                QMessageBox.warning(self, "Ошибка", "Имя таблицы должно состоять из букв и цифр.")
-                return
-            self.db_manager.create_table(table_name)
-            self.available_tables.append(table_name)
-            self.account_table = QTableWidget()
-            self.tab_widget.addTab(self.account_table, table_name)
-            self.current_table = table_name
-        else:
-            QMessageBox.warning(self, "Ошибка", "Введите имя таблицы.")
 
+    def show_create_table_dialog(self):
+        """
+        Отображает диалоговое окно для создания новой таблицы.
+        """
+        table_name, ok = QInputDialog.getText(self, "Создание таблицы", "Введите имя таблицы:")
+        if ok:
+            if table_name:
+                if not table_name.isalnum():
+                    QMessageBox.warning(self, "Ошибка", "Имя таблицы должно состоять из букв и цифр.")
+                    return
+                self.db_manager.create_table(table_name)
+                self.db_manager.create_audience_table(f"{table_name}")
+                self.available_tables.append(table_name)  # Добавляем таблицу в список
+                self.current_table = table_name  # Обновляем текущую таблицу
+                self.account_table = AccountTable(self.db_manager, table_name)  # Создаем новую таблицу
+                self.tab_widget.addTab(self.account_table, table_name)  # Добавляем вкладку с новой таблицей
+                self.tab_widget.setCurrentWidget(self.account_table)  # Переключаемся на новую вкладку
+                print(f"Таблица '{table_name}' создана.")
+            else:
+                QMessageBox.warning(self, "Ошибка", "Введите имя таблицы.")
+        else:
+            print("Создание таблицы отменено.")
 
     def load_accounts(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Загрузить аккаунты", "", "All Files (*)")
-        if file_path:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    self.account_manager.add_account(self.current_table, row)
-            self.tab_widget.currentWidget().update_table()
+        """
+        Загружает аккаунты из файла.
+        """
+        file_path, ok = QFileDialog.getOpenFileName(self, "Загрузить аккаунты", "", "All Files (*)")
+        if ok:
+            if file_path:
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        reader = csv.DictReader(f)
+                        for row in reader:
+                            self.account_manager.add_account(self.current_table, row)
+                            # Обновляем таблицу в UI
+                            self.tab_widget.currentWidget().update_table(self.current_table)
+                except Exception as e:
+                    print(f"Ошибка при загрузке аккаунтов: {e}")
+                    QMessageBox.warning(self, "Ошибка", f"Ошибка при загрузке аккаунтов: {e}")
+            else:
+                print("Загрузка аккаунтов отменена.")
+        else:
+            print("Загрузка аккаунтов отменена.")
 
     def send_selected_to_task(self):
         """
@@ -873,19 +885,26 @@ class MainWindow(QMainWindow):
         # Перерисовываем QTabWidget, чтобы изменения стали видны
         self.tab_widget.currentWidget().repaint()
 
-
     def load_tables_from_database(self):
+        """
+        Загружает таблицы из базы данных.
+        """
+        print("Загрузка таблиц из базы данных")  # Логирование
         try:
             c = self.db_manager.conn.cursor()
             c.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = [row[0] for row in c.fetchall() if row[0] != 'sqlite_sequence']
+
+            # Добавляем вкладки для каждой таблицы
             for table_name in tables:
                 if table_name not in self.available_tables:
                     self.available_tables.append(table_name)
-                    self.account_table = QTableWidget()
+                    self.account_table = AccountTable(self.db_manager, table_name)
                     self.tab_widget.addTab(self.account_table, table_name)
-        except sqlite3.Error as e:
-            logging.error(f"Ошибка при загрузке таблиц из базы данных: {e}")
+                    # Заполняем таблицу данными из БД
+                    self.account_table.update_table(table_name)
+        except Exception as e:
+            print(f"Ошибка при загрузке таблиц из базы данных: {e}")
 
     def show_table_context_menu(self, point):
         """
@@ -949,12 +968,16 @@ def ensure_parsed_audience_table_exists(db_file: str):
     try:
         conn = sqlite3.connect(db_file)
         c = conn.cursor()
+        
+        # Check if table exists
         c.execute("""
             SELECT name 
             FROM sqlite_master 
             WHERE type='table' AND name='parsed_audience';
         """)
+        
         if c.fetchone() is None:
+            # Create table if it does not exist
             c.execute("""
                 CREATE TABLE parsed_audience (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -965,17 +988,19 @@ def ensure_parsed_audience_table_exists(db_file: str):
                 )
             """)
             conn.commit()
-            logging.info("Table 'parsed_audience' created.")
+            print("Table 'parsed_audience' created.")
         else:
-            logging.info("Table 'parsed_audience' already exists.")
+            print("Table 'parsed_audience' already exists.")
+        
     except sqlite3.Error as e:
-        logging.error(f"Database error: {e}")
+        print(f"Database error: {e}")
     finally:
         if conn:
             conn.close()
+ensure_parsed_audience_table_exists('accounts.db')
+
 
 if __name__ == "__main__":
-    ensure_parsed_audience_table_exists('accounts.db')
     app = QApplication([])
     main_window = MainWindow()
     app.exec_()
